@@ -14,16 +14,6 @@
 echo "what guacamole version you want?" 
 read $guac_version
 
-echo "what mysql version you want? (5.1.35)"
-#mysql_version=5.1.35
-read $mysql_version
-
-echo "mysql username?"
-read $mysql_username #=root
-
-echo "mysql password?"
-read $mysql_password
-
 ssl_country=US
 ssl_org=IT
 ssl_certname=guacamole.selfsigned.certificate
