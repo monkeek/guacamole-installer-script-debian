@@ -1,0 +1,210 @@
+#!/bin/bash
+ 
+################################
+## Guacamole Installer Script ##
+### Originally By ##############
+## Green Reed Technology 2015 ##
+######## Martez Reed ###########
+#https://gist.github.com/martezr/2eb2ae4ac447f7534095
+###Modified by #################
+### Alberto Bursi ##############
+################################
+ 
+## Ask user for variables
+echo "what guacamole version you want?" 
+read $guac_version
+
+echo "what mysql version you want? (5.1.35)"
+#mysql_version=5.1.35
+read $mysql_version
+
+echo "mysql username?"
+read $mysql_username #=root
+
+echo "mysql password?"
+read $mysql_password
+
+ssl_country=US
+ssl_org=IT
+ssl_certname=guacamole.selfsigned.certificate
+ 
+#System Update
+apt-get update -y
+ 
+#System Upgrade
+apt-get upgrade -y
+ 
+#Install Tomcat 7
+apt-get install -y tomcat7
+ 
+# Install Packages
+apt-get install -y checkinstall make libcairo2-dev libpango-1.0-0 libpango1.0-dev libssh2-1-dev libpng12-dev freerdp-x11 libssh2-1 libvncserver-dev libfreerdp-dev libvorbis-dev libssl1.0.0 gcc libssh-dev libpulse-dev tomcat7-admin tomcat7-docs libtelnet-dev libossp-uuid-dev
+ 
+#Download Guacamole Client
+wget http://sourceforge.net/projects/guacamole/files/current/binary/guacamole-$guac_version.war
+ 
+#Download Guacamole Server
+wget http://sourceforge.net/projects/guacamole/files/current/source/guacamole-server-$guac_version.tar.gz
+ 
+# Untar the guacamole server source files
+tar -xzf guacamole-server-$guac_version.tar.gz
+ 
+# Change directory to the source files
+cd guacamole-server-$guac_version/
+ 
+#
+ ./configure --with-init-dir=/etc/init.d
+ 
+#
+ make
+ 
+#
+checkinstall make install
+ 
+#
+update-rc.d guacd defaults
+ 
+#
+ldconfig
+ 
+# Create guacamole configuration directory
+mkdir /etc/guacamole
+ 
+# Create guacamole.properties configuration file
+cat <<EOF1 > /etc/guacamole/guacamole.properties
+# Hostname and port of guacamole proxy
+guacd-hostname: localhost
+guacd-port:     4822
+ 
+# Auth provider class (authenticates user/pass combination, needed if using the provided login screen)
+auth-provider: net.sourceforge.guacamole.net.basic.BasicFileAuthenticationProvider
+basic-user-mapping: /etc/guacamole/user-mapping.xml
+ 
+lib-directory: /var/lib/guacamole/classpath
+EOF1
+ 
+#
+ mkdir /usr/share/tomcat7/.guacamole
+ 
+# Create a symbolic link of the properties file for Tomcat7
+ ln -s /etc/guacamole/guacamole.properties /usr/share/tomcat7/.guacamole
+
+# Move up a directory to copy the guacamole.war file
+cd ..
+ 
+# Copy the guacamole war file to the Tomcat 7 webapps directory
+ cp guacamole-$guac_version.war /var/lib/tomcat7/webapps/guacamole.war
+ 
+# Start the Guacamole (guacd) service
+ service guacd start
+ 
+# Restart Tomcat 7
+ service tomcat7 restart
+ 
+##########################################
+# NGINX Installation and configuration #
+##########################################
+ 
+# Install Nginx
+apt-get install -y nginx
+ 
+# Create directory to store server key and certificate
+mkdir /etc/nginx/ssl
+ 
+# Create self-signed certificate
+# ALLOW VARIABLES
+openssl req -x509 -subj '/C=US/ST=IL/L=Chicago/O=IT/CN=guacamole.localdomain.local' -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt -extensions v3_ca
+ 
+# Add proxy settings to nginx config file (/etc/nginx/sites-enabled/default)
+# Borrowed configuration from Eric Oud Ammerveled (http://sourceforge.net/p/guacamole/discussion/1110834/thread/6961d682/#aca9)
+ 
+sudo cat <<'EOF3' > /etc/nginx/sites-enabled/default
+# ANOTHER SERVER LISTENING ON PORT 443 (SSL) to secure the Guacamole traffic and proxy the requests to Tomcat7
+server {
+    listen 443 ssl;
+
+    server_name     guacamole.localdomain.local;
+
+# This part is for SSL config only
+    ssl on;
+    ssl_certificate      /etc/nginx/ssl/nginx.crt;
+    ssl_certificate_key  /etc/nginx/ssl/nginx.key;
+    ssl_session_cache shared:SSL:10m;
+    ssl_ciphers 'AES256+EECDH:AES256+EDH:!aNULL';
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_prefer_server_ciphers on;
+#    ssl_dhparam /etc/ssl/certs/dhparam.pem;
+
+# Found below settings to be performing best but it will work with your own
+    tcp_nodelay    on;
+    tcp_nopush     off;
+    sendfile       on;
+    client_body_buffer_size 10K;
+    client_header_buffer_size 1k;
+    client_max_body_size 8m;
+    large_client_header_buffers 2 1k;
+    client_body_timeout 12;
+    client_header_timeout 12;
+    keepalive_timeout 15;
+    send_timeout 10;
+
+# HINT: You might want to enable access_log during the testing!
+    access_log off;
+
+# Don't turn ON proxy_buffering!; this will impact the line quality
+    proxy_buffering off;
+    proxy_redirect  off;
+
+# Enabling websockets using the first 3 lines; Check /var/log/tomcat8/catalina.out while testing; guacamole will show you a fallback message if websockets fail to work.
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+# Just something that was advised by someone from the dev team; worked fine without it too.
+    proxy_cookie_path /guacamole/ /;
+
+    location / {
+            # I am running the Tomcat7 and Guacamole on the local server
+            proxy_pass http://localhost:8080;
+            break;
+    }
+}
+EOF3
+ 
+# Restart nginx service
+ service nginx restart
+ 
+# Restart tomcat7
+ service tomcat7 restart
+ 
+# Restart guacd
+ service guacd restart
+ 
+################################################
+#           Firewall Configuration             #
+################################################
+ 
+# Disable Firewall 
+ ufw disable
+ 
+# Allow HTTPS access
+ ufw allow https
+
+# Allow SSH access
+ ufw allow ssh
+
+# Enable Firewall
+ ufw enable
+ 
+# Disable IPv6
+# DO THIS WITH A SYSCTL.D for more modularity.
+cat <<EOF3 >> /etc/sysctl.conf
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF3
+ 
+# Activate sysctl
+ sysctl -p
