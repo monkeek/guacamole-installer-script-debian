@@ -12,7 +12,7 @@
  
 ## Ask user for variables
 echo "what guacamole version you want?" 
-read $guac_version
+read guac_version
 
 ssl_country=US
 ssl_org=IT
