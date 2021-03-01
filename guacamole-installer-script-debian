@@ -8,6 +8,8 @@
 #https://gist.github.com/martezr/2eb2ae4ac447f7534095
 ###Modified by #################
 ### Alberto Bursi ##############
+###Modified by #################
+### Antoine Martin-Julien ######
 ################################
  
 ## Ask user for variables
@@ -31,11 +33,9 @@ apt-get install -y tomcat7
 apt-get install -y checkinstall make libcairo2-dev libpango-1.0-0 libpango1.0-dev libssh2-1-dev libpng12-dev freerdp-x11 libssh2-1 libvncserver-dev libfreerdp-dev libvorbis-dev libssl1.0.0 gcc libssh-dev libpulse-dev tomcat7-admin tomcat7-docs libtelnet-dev libossp-uuid-dev
  
 #Download Guacamole Client
-wget http://sourceforge.net/projects/guacamole/files/current/binary/guacamole-$guac_version.war
- 
+wget https://apache.org/dyn/closer.cgi?action=download&filename=guacamole/$guac_version/binary/guacamole-$guac_version.war
 #Download Guacamole Server
-wget http://sourceforge.net/projects/guacamole/files/current/source/guacamole-server-$guac_version.tar.gz
- 
+wget https://apache.org/dyn/closer.cgi?action=download&filename=guacamole/$guac_version/source/guacamole-server-$guac_version.tar.gz
 # Untar the guacamole server source files
 tar -xzf guacamole-server-$guac_version.tar.gz
  
@@ -98,34 +98,15 @@ cd ..
 # Install Nginx
 apt-get install -y nginx
  
-# Create directory to store server key and certificate
-mkdir /etc/nginx/ssl
- 
-# Create self-signed certificate
-# ALLOW VARIABLES
-openssl req -x509 -subj '/C=US/ST=IL/L=Chicago/O=IT/CN=guacamole.localdomain.local' -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt -extensions v3_ca
- 
 # Add proxy settings to nginx config file (/etc/nginx/sites-enabled/default)
 # Borrowed configuration from Eric Oud Ammerveled (http://sourceforge.net/p/guacamole/discussion/1110834/thread/6961d682/#aca9)
  
-sudo cat <<'EOF3' > /etc/nginx/sites-enabled/default
+sudo cat <<'EOF3' > /etc/nginx/sites-enabled/guacamole.http.conf
 # ANOTHER SERVER LISTENING ON PORT 443 (SSL) to secure the Guacamole traffic and proxy the requests to Tomcat7
 server {
-    listen 443 ssl;
+    listen 80;
 
     server_name     guacamole.localdomain.local;
-
-# This part is for SSL config only
-    ssl on;
-    ssl_certificate      /etc/nginx/ssl/nginx.crt;
-    ssl_certificate_key  /etc/nginx/ssl/nginx.key;
-    ssl_session_cache shared:SSL:10m;
-    ssl_ciphers 'AES256+EECDH:AES256+EDH:!aNULL';
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-    ssl_stapling on;
-    ssl_stapling_verify on;
-    ssl_prefer_server_ciphers on;
-#    ssl_dhparam /etc/ssl/certs/dhparam.pem;
 
 # Found below settings to be performing best but it will work with your own
     tcp_nodelay    on;
@@ -176,25 +157,21 @@ EOF3
 #           Firewall Configuration             #
 ################################################
  
+# Install UFW
+
+apt-get install -y ufw
 # Disable Firewall 
  ufw disable
  
-# Allow HTTPS access
+# Allow HTTP/HTTPS access
  ufw allow https
+ ufw allow http
 
 # Allow SSH access
  ufw allow ssh
 
 # Enable Firewall
  ufw enable
- 
-# Disable IPv6
-# DO THIS WITH A SYSCTL.D for more modularity.
-cat <<EOF3 >> /etc/sysctl.conf
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-net.ipv6.conf.lo.disable_ipv6 = 1
-EOF3
- 
+  
 # Activate sysctl
  sysctl -p
